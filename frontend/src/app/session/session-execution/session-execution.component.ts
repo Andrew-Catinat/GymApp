@@ -9,15 +9,22 @@ import {
   OnInit,
   signal,
 } from '@angular/core';
+import { Router } from '@angular/router';
 
 import { ApiProblem, Session, SessionSet, SessionSummary } from '../session.models';
 import { SessionService } from '../session.service';
 
 type ViewState = 'loading' | 'empty' | 'ready' | 'done' | 'error';
 
+/** Son joué à la fin du repos (fichier à placer dans public/sounds/). */
+const REST_END_SOUND_URL = '/sounds/rest-end.mp3';
+/** Route de sortie de « Quitter la séance » (le dashboard, à venir). */
+const EXIT_ROUTE = '/';
+
 /**
- * Écran d'exécution d'une séance : un onglet par exercice, le tableau des séries
- * (prévu / réel), un minuteur de repos après chaque série validée et la clôture.
+ * Écran d'exécution d'une séance (client, mobile-first) : un onglet par exercice,
+ * les séries (objectif / réel), un minuteur de repos sonore après chaque série validée,
+ * le passage automatique à l'exercice suivant et la clôture.
  *
  * Sans `sessionId`, affiche la séance en cours (ou propose d'en lancer une).
  * Avec le routeur, `withComponentInputBinding()` renseigne `sessionId` depuis `:sessionId`.
@@ -30,6 +37,7 @@ type ViewState = 'loading' | 'empty' | 'ready' | 'done' | 'error';
 })
 export class SessionExecutionComponent implements OnInit {
   private readonly sessionService = inject(SessionService);
+  private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly sessionId = input<number | undefined, unknown>(undefined, {
@@ -45,12 +53,9 @@ export class SessionExecutionComponent implements OnInit {
   readonly savingSetIds = signal<ReadonlySet<number>>(new Set());
   readonly completing = signal(false);
   readonly restRemaining = signal<number | null>(null);
+  private readonly restTotal = signal(0);
 
   readonly activeExercise = computed(() => this.session()?.exercises[this.activeIndex()] ?? null);
-  readonly isLastExercise = computed(() => {
-    const session = this.session();
-    return !!session && this.activeIndex() === session.exercises.length - 1;
-  });
   readonly progressPercent = computed(() => {
     const session = this.session();
     return session && session.totalSets > 0
@@ -61,8 +66,20 @@ export class SessionExecutionComponent implements OnInit {
     const session = this.session();
     return !!session && session.completedSets === session.totalSets;
   });
+  /** « Terminer » n'apparaît que sur le dernier exercice, une fois toutes les séries validées. */
+  readonly canFinish = computed(() => {
+    const session = this.session();
+    return !!session && this.activeIndex() === session.exercises.length - 1 && this.allSetsDone();
+  });
+  readonly restPercent = computed(() => {
+    const total = this.restTotal();
+    return total > 0 ? ((this.restRemaining() ?? 0) / total) * 100 : 0;
+  });
 
+  private readonly restEndSound = this.createSound();
+  private soundUnlocked = false;
   private restTimer: ReturnType<typeof setInterval> | null = null;
+  private restEndsAt = 0;
 
   constructor() {
     this.destroyRef.onDestroy(() => this.stopRest());
@@ -92,16 +109,15 @@ export class SessionExecutionComponent implements OnInit {
     });
   }
 
+  /** La séance reste « en cours » côté backend : on pourra la reprendre depuis le dashboard. */
+  quit(): void {
+    this.stopRest();
+    void this.router.navigateByUrl(EXIT_ROUTE);
+  }
+
   selectExercise(index: number): void {
     this.activeIndex.set(index);
     this.showAnimation.set(false);
-  }
-
-  nextExercise(): void {
-    const session = this.session();
-    if (session && this.activeIndex() < session.exercises.length - 1) {
-      this.selectExercise(this.activeIndex() + 1);
-    }
   }
 
   toggleAnimation(): void {
@@ -129,6 +145,7 @@ export class SessionExecutionComponent implements OnInit {
     if (!previous) {
       return;
     }
+    this.unlockSound();
     const completed = !previous.completed;
     // Valider sans rien saisir = objectif atteint : on reprend les valeurs prévues.
     const next: SessionSet = {
@@ -141,17 +158,18 @@ export class SessionExecutionComponent implements OnInit {
     };
     this.patchSet(set.id, next);
     this.saveSet(next, previous);
+
     if (completed) {
       this.startRest(this.activeExercise()?.restSeconds ?? 0);
+      if (this.activeExercise()?.completed) {
+        this.goToNextOpenExercise();
+      }
     }
   }
 
   finish(): void {
     const session = this.session();
     if (!session || this.completing()) {
-      return;
-    }
-    if (!this.allSetsDone() && !confirm('Certaines séries ne sont pas validées. Terminer quand même ?')) {
       return;
     }
     this.completing.set(true);
@@ -188,9 +206,24 @@ export class SessionExecutionComponent implements OnInit {
   private showSession(session: Session): void {
     this.session.set(session);
     this.state.set(session.status === 'IN_PROGRESS' ? 'ready' : 'done');
-    // On ouvre le premier exercice qui n'est pas terminé.
+    // On ouvre le premier exercice qui n'est pas terminé (ou le dernier si tout est fait).
     const firstOpen = session.exercises.findIndex((exercise) => !exercise.completed);
-    this.activeIndex.set(firstOpen === -1 ? 0 : firstOpen);
+    this.activeIndex.set(firstOpen === -1 ? session.exercises.length - 1 : firstOpen);
+  }
+
+  /**
+   * Auto-switch : passe au prochain exercice non terminé (après l'onglet courant,
+   * sinon depuis le début). S'il n'y en a plus, va au dernier pour afficher « Terminer ».
+   */
+  private goToNextOpenExercise(): void {
+    const exercises = this.session()?.exercises ?? [];
+    const current = this.activeIndex();
+    const after = exercises.findIndex((e, i) => i > current && !e.completed);
+    const before = exercises.findIndex((e) => !e.completed);
+    const target = after !== -1 ? after : before !== -1 ? before : exercises.length - 1;
+    if (target !== current) {
+      this.selectExercise(target);
+    }
   }
 
   private saveSet(set: SessionSet, rollback: SessionSet): void {
@@ -254,21 +287,24 @@ export class SessionExecutionComponent implements OnInit {
       .find((s) => s.id === setId);
   }
 
+  /** Le minuteur se cale sur l'heure de fin : il reste juste si l'onglet passe en arrière-plan. */
   private startRest(seconds: number): void {
     this.stopRest();
     if (seconds <= 0) {
       return;
     }
+    this.restTotal.set(seconds);
     this.restRemaining.set(seconds);
+    this.restEndsAt = Date.now() + seconds * 1000;
     this.restTimer = setInterval(() => {
-      const remaining = (this.restRemaining() ?? 0) - 1;
+      const remaining = Math.ceil((this.restEndsAt - Date.now()) / 1000);
       if (remaining <= 0) {
         this.stopRest();
-        navigator.vibrate?.(300);
+        this.playRestEnd();
       } else {
         this.restRemaining.set(remaining);
       }
-    }, 1000);
+    }, 250);
   }
 
   private stopRest(): void {
@@ -277,6 +313,45 @@ export class SessionExecutionComponent implements OnInit {
       this.restTimer = null;
     }
     this.restRemaining.set(null);
+  }
+
+  private createSound(): HTMLAudioElement | null {
+    if (typeof Audio === 'undefined') {
+      return null;
+    }
+    const audio = new Audio(REST_END_SOUND_URL);
+    audio.preload = 'auto';
+    return audio;
+  }
+
+  /**
+   * Les navigateurs mobiles bloquent la lecture audio hors geste utilisateur :
+   * on « débloque » le son lors du premier clic sur une case, en le jouant muet.
+   */
+  private unlockSound(): void {
+    const audio = this.restEndSound;
+    if (!audio || this.soundUnlocked) {
+      return;
+    }
+    this.soundUnlocked = true;
+    audio.muted = true;
+    audio
+      .play()
+      .then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+      })
+      .catch(() => (this.soundUnlocked = false))
+      .finally(() => (audio.muted = false));
+  }
+
+  private playRestEnd(): void {
+    const audio = this.restEndSound;
+    if (audio) {
+      audio.currentTime = 0;
+      audio.play().catch(() => undefined); // son indisponible : on n'interrompt pas la séance
+    }
+    navigator.vibrate?.(300);
   }
 
   private readNumber(event: Event, integer: boolean): number | null {

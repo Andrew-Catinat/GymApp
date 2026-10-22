@@ -1,0 +1,21 @@
+spring:
+  application:
+    name: gymapp
+  datasource:
+    url: ${GYMAPP_DB_URL:jdbc:postgresql://localhost:5432/gymapp}
+    username: ${GYMAPP_DB_USER:gymapp}
+    password: ${GYMAPP_DB_PASSWORD:gymapp}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_batch_fetch_size: 50
+        jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+
+gymapp:
+  media:
+    base-url: https://github.com/hasaneyldrm/exercises-dataset/raw/main/

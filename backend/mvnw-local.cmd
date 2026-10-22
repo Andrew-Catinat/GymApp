@@ -8,6 +8,8 @@ setlocal
 set "JAVA_HOME=%~dp0..\.tools\jdk-25"
 set "PATH=%JAVA_HOME%\bin;%PATH%"
 set "MAVEN_USER_HOME=%~dp0.m2"
+rem Certificats : utilise le magasin Windows (antivirus/proxy qui inspecte le HTTPS)
+set "MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT %MAVEN_OPTS%"
 cd /d "%~dp0"
 call "%~dp0mvnw.cmd" %*
 endlocal

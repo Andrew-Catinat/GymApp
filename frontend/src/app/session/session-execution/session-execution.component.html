@@ -1,0 +1,176 @@
+@switch (state()) {
+  @case ('loading') {
+    <p class="status" aria-live="polite">Chargement de la séance…</p>
+  }
+
+  @case ('error') {
+    <div class="status status--error" role="alert">
+      <p>{{ error() }}</p>
+      <button type="button" class="btn" (click)="load()">Réessayer</button>
+    </div>
+  }
+
+  @case ('empty') {
+    <div class="status">
+      <p>Aucune séance en cours.</p>
+      <button type="button" class="btn btn--primary" (click)="startSession()">Lancer ma prochaine séance</button>
+    </div>
+  }
+
+  @case ('done') {
+    <section class="summary">
+      <h1>Séance terminée 💪</h1>
+      @if (summary(); as s) {
+        <h2>{{ s.workoutName }}</h2>
+        <dl>
+          <div><dt>Durée</dt><dd>{{ formatDuration(s.durationSeconds) }}</dd></div>
+          <div><dt>Séries validées</dt><dd>{{ s.completedSets }} / {{ s.totalSets }}</dd></div>
+        </dl>
+      } @else if (session(); as s) {
+        <h2>{{ s.workoutName }}</h2>
+        <p>{{ s.completedSets }} / {{ s.totalSets }} séries validées.</p>
+      }
+    </section>
+  }
+
+  @case ('ready') {
+    @if (session(); as s) {
+      <header class="header">
+        <h1>{{ s.workoutName }}</h1>
+        <div class="progress" role="progressbar" [attr.aria-valuenow]="progressPercent()" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress__bar" [style.width.%]="progressPercent()"></div>
+        </div>
+        <p class="progress__label">{{ s.completedSets }} / {{ s.totalSets }} séries</p>
+      </header>
+
+      <nav class="tabs" role="tablist" aria-label="Exercices">
+        @for (item of s.exercises; track item.id; let i = $index) {
+          <button
+            type="button"
+            role="tab"
+            class="tabs__tab"
+            [class.tabs__tab--active]="i === activeIndex()"
+            [class.tabs__tab--done]="item.completed"
+            [attr.aria-selected]="i === activeIndex()"
+            (click)="selectExercise(i)"
+          >
+            @if (item.completed) {<span aria-hidden="true">✓ </span>}{{ item.exercise.name }}
+          </button>
+        }
+      </nav>
+
+      @if (activeExercise(); as current) {
+        <section class="exercise" role="tabpanel">
+          <div class="exercise__media">
+            @if (showAnimation() && current.exercise.animationUrl) {
+              <img [src]="current.exercise.animationUrl" [alt]="'Démonstration : ' + current.exercise.name" (click)="toggleAnimation()" />
+            } @else if (current.exercise.imageUrl) {
+              <img [src]="current.exercise.imageUrl" [alt]="current.exercise.name" (click)="toggleAnimation()" />
+            }
+            @if (current.exercise.animationUrl) {
+              <button type="button" class="btn btn--small" (click)="toggleAnimation()">
+                {{ showAnimation() ? "Masquer l'animation" : "Voir l'animation" }}
+              </button>
+            }
+          </div>
+
+          <div class="exercise__info">
+            <h2>{{ current.exercise.name }}</h2>
+            <p class="exercise__meta">
+              @if (current.exercise.target) {<span>{{ current.exercise.target }}</span>}
+              @if (current.exercise.equipment) {<span>{{ current.exercise.equipment }}</span>}
+              <span>Repos {{ formatDuration(current.restSeconds) }}</span>
+            </p>
+            @if (current.coachTip) {
+              <blockquote class="exercise__tip">{{ current.coachTip }}</blockquote>
+            }
+          </div>
+
+          <table class="sets">
+            <thead>
+              <tr>
+                <th scope="col">Série</th>
+                <th scope="col">Objectif</th>
+                <th scope="col">Reps</th>
+                <th scope="col">Poids (kg)</th>
+                <th scope="col"><span class="visually-hidden">Validée</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (set of current.sets; track set.id) {
+                <tr [class.sets__row--done]="set.completed">
+                  <td>{{ set.setNumber }}</td>
+                  <td class="sets__target">
+                    {{ set.targetReps }} × {{ set.targetWeightKg != null ? set.targetWeightKg + ' kg' : 'PDC' }}
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      inputmode="numeric"
+                      min="0"
+                      max="999"
+                      [placeholder]="set.targetReps"
+                      [value]="set.actualReps ?? ''"
+                      [attr.aria-label]="'Répétitions série ' + set.setNumber"
+                      (change)="onRepsInput(set, $event)"
+                      (blur)="onFieldBlur(set)"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      inputmode="decimal"
+                      min="0"
+                      step="0.25"
+                      [placeholder]="set.targetWeightKg ?? '—'"
+                      [value]="set.actualWeightKg ?? ''"
+                      [attr.aria-label]="'Poids série ' + set.setNumber"
+                      (change)="onWeightInput(set, $event)"
+                      (blur)="onFieldBlur(set)"
+                    />
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      class="check"
+                      [class.check--on]="set.completed"
+                      [disabled]="isSaving(set.id)"
+                      [attr.aria-pressed]="set.completed"
+                      [attr.aria-label]="'Valider la série ' + set.setNumber"
+                      (click)="toggleSet(set)"
+                    >✓</button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </section>
+      }
+
+      @if (error()) {
+        <p class="status status--error" role="alert">{{ error() }}</p>
+      }
+
+      <footer class="actions">
+        @if (!isLastExercise()) {
+          <button type="button" class="btn" (click)="nextExercise()">Exercice suivant</button>
+        }
+        <button
+          type="button"
+          class="btn"
+          [class.btn--primary]="allSetsDone() || isLastExercise()"
+          [disabled]="completing()"
+          (click)="finish()"
+        >Terminer la séance</button>
+      </footer>
+
+      @if (restRemaining(); as remaining) {
+        <div class="rest" role="timer" aria-live="polite">
+          <span class="rest__label">Repos</span>
+          <span class="rest__time">{{ formatDuration(remaining) }}</span>
+          <button type="button" class="btn btn--small" (click)="skipRest()">Passer</button>
+        </div>
+      }
+    }
+  }
+}

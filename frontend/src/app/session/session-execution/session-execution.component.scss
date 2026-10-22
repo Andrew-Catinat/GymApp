@@ -1,0 +1,195 @@
+:host {
+  --accent: #ff6b2c;
+  --done: #2fbf71;
+  --danger: #d64545;
+  --surface: #ffffff;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --text: #111827;
+
+  display: block;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px 16px 96px; // place pour la barre de repos
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+}
+
+h1 { margin: 0 0 8px; font-size: 1.4rem; }
+h2 { margin: 0 0 4px; font-size: 1.15rem; }
+
+.status {
+  text-align: center;
+  padding: 32px 0;
+
+  &--error { color: var(--danger); padding: 8px 0; }
+}
+
+.btn {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font: inherit;
+  cursor: pointer;
+
+  &--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  &--small { padding: 6px 10px; font-size: 0.85rem; }
+  &:disabled { opacity: 0.5; cursor: default; }
+}
+
+.progress {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+
+  &__bar { height: 100%; background: var(--done); transition: width 0.3s ease; }
+  &__label { margin: 4px 0 0; color: var(--muted); font-size: 0.85rem; }
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &__tab {
+    flex: 0 0 auto;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    font: inherit;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &--done { border-color: var(--done); color: var(--done); }
+    &--active { background: var(--text); border-color: var(--text); color: #fff; }
+  }
+}
+
+.exercise {
+  display: grid;
+  gap: 16px;
+
+  &__media {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+
+    img {
+      width: 100%;
+      max-width: 320px;
+      aspect-ratio: 1;
+      object-fit: contain;
+      border-radius: 12px;
+      background: #f3f4f6;
+      cursor: pointer;
+    }
+  }
+
+  &__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+
+    span:not(:last-child)::after { content: '·'; margin-left: 8px; }
+  }
+
+  &__tip {
+    margin: 8px 0 0;
+    padding: 8px 12px;
+    border-left: 3px solid var(--accent);
+    background: #fff7f2;
+    font-style: italic;
+  }
+}
+
+.sets {
+  width: 100%;
+  border-collapse: collapse;
+
+  th, td { padding: 8px 4px; text-align: center; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-size: 0.8rem; font-weight: 500; }
+
+  &__target { color: var(--muted); font-size: 0.9rem; white-space: nowrap; }
+  &__row--done { background: rgba(47, 191, 113, 0.08); }
+
+  input {
+    width: 64px;
+    padding: 8px 4px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font: inherit;
+    text-align: center;
+
+    &:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  }
+}
+
+.check {
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: transparent;
+  font-size: 1.1rem;
+  cursor: pointer;
+
+  &--on { border-color: var(--done); background: var(--done); color: #fff; }
+  &:disabled { opacity: 0.6; }
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.rest {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--text);
+  color: #fff;
+
+  &__label { color: #d1d5db; }
+  &__time { font-size: 1.8rem; font-variant-numeric: tabular-nums; }
+}
+
+.summary {
+  text-align: center;
+  padding: 32px 0;
+
+  dl { display: flex; justify-content: center; gap: 32px; }
+  dt { color: var(--muted); font-size: 0.85rem; }
+  dd { margin: 4px 0 0; font-size: 1.5rem; font-weight: 600; }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .sets input { width: 52px; }
+}
